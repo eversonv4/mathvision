@@ -1,98 +1,81 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useState } from 'react';
+import { Platform, ScrollView, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
+import { ModoAtalho } from '@/components/modo-atalho';
+import { ModoDigitar } from '@/components/modo-digitar';
+import { ModoReconhecer } from '@/components/modo-reconhecer';
+import { SegmentedControl, type OpcaoSegmentada } from '@/components/segmented-control';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
-  return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
+type Modo = 'reconhecer' | 'digitar' | 'atalho';
 
-export default function HomeScreen() {
+const OPCOES: OpcaoSegmentada<Modo>[] = [
+  { valor: 'atalho', rotulo: 'Foto → resultado' },
+  { valor: 'reconhecer', rotulo: 'Revisar antes' },
+  { valor: 'digitar', rotulo: 'Digitar LaTeX' },
+];
+
+export default function ResolverScreen() {
+  const [modo, setModo] = useState<Modo>('atalho');
+  const insets = useSafeAreaInsets();
+  const theme = useTheme();
+
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
+    <ScrollView
+      style={[styles.scrollView, { backgroundColor: theme.background }]}
+      contentInset={{ top: insets.top }}
+      contentContainerStyle={[
+        styles.contentContainer,
+        Platform.select({
+          android: { paddingTop: insets.top, paddingBottom: insets.bottom },
+          web: { paddingTop: Spacing.six },
+        }),
+      ]}
+      keyboardShouldPersistTaps="handled">
+      <ThemedView style={styles.container}>
+        <ThemedView style={styles.titleBlock}>
+          <ThemedText type="subtitle">MathVision</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            Fotografe uma equação manuscrita e deixe o SymPy resolver.
           </ThemedText>
         </ThemedView>
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
+        <SegmentedControl opcoes={OPCOES} valor={modo} onChange={setModo} />
 
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
+        <ThemedView style={[styles.modoContainer, { paddingBottom: BottomTabInset + Spacing.four }]}>
+          {modo === 'atalho' && <ModoAtalho />}
+          {modo === 'reconhecer' && <ModoReconhecer />}
+          {modo === 'digitar' && <ModoDigitar />}
         </ThemedView>
-
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
+      </ThemedView>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  scrollView: {
     flex: 1,
-    justifyContent: 'center',
+  },
+  contentContainer: {
     flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
-  },
-  heroSection: {
-    alignItems: 'center',
     justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
+  },
+  container: {
+    maxWidth: MaxContentWidth,
+    flexGrow: 1,
+    width: '100%',
     gap: Spacing.four,
+    paddingHorizontal: Spacing.four,
   },
-  title: {
-    textAlign: 'center',
+  titleBlock: {
+    gap: Spacing.one,
+    paddingTop: Spacing.four,
   },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
+  modoContainer: {
+    gap: Spacing.four,
   },
 });

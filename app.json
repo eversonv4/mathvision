@@ -32,6 +32,13 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O MathVision usa suas fotos para reconhecer equações matemáticas.",
+          "cameraPermission": "O MathVision usa a câmera para fotografar equações matemáticas."
+        }
       ]
     ],
     "experiments": {

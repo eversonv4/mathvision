@@ -1,127 +1,177 @@
-import { Image } from 'expo-image';
-import { SymbolView } from 'expo-symbols';
-import { Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { useRef, useState } from 'react';
+import { Platform, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ExternalLink } from '@/components/external-link';
+import { Badge } from '@/components/badge';
+import { ErrorBanner } from '@/components/error-banner';
+import { LoadingBlock } from '@/components/loading-block';
+import { PrimaryButton } from '@/components/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Collapsible } from '@/components/ui/collapsible';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { BottomTabInset, Fonts, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useApiConfig } from '@/lib/api-config';
+import { consultarSaude } from '@/lib/api';
+import type { RespostaSaude } from '@/types/api';
 
-export default function TabTwoScreen() {
-  const safeAreaInsets = useSafeAreaInsets();
-  const insets = {
-    ...safeAreaInsets,
-    bottom: safeAreaInsets.bottom + BottomTabInset + Spacing.three,
-  };
+export default function ConfiguracoesScreen() {
+  const insets = useSafeAreaInsets();
   const theme = useTheme();
+  const { baseUrl, rascunho, alterarRascunho, salvar, temAlteracoesPendentes } = useApiConfig();
 
-  const contentPlatformStyle = Platform.select({
-    android: {
-      paddingTop: insets.top,
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-      paddingBottom: insets.bottom,
-    },
-    web: {
-      paddingTop: Spacing.six,
-      paddingBottom: Spacing.four,
-    },
-  });
+  const [testando, setTestando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [saude, setSaude] = useState<RespostaSaude | null>(null);
+  const controladorRef = useRef<AbortController | null>(null);
+
+  async function salvarEtestar() {
+    await salvar();
+    await testarConexao();
+  }
+
+  async function testarConexao() {
+    const controlador = new AbortController();
+    controladorRef.current = controlador;
+    setTestando(true);
+    setErro(null);
+    setSaude(null);
+    try {
+      const resposta = await consultarSaude(
+        rascunho.trim().replace(/\/+$/, '') || baseUrl,
+        controlador.signal,
+      );
+      setSaude(resposta);
+    } catch (e) {
+      if (e instanceof Error && e.name === 'AbortError') {
+        setErro('Requisição cancelada.');
+      } else {
+        setErro(e instanceof Error ? e.message : 'Não foi possível conectar.');
+      }
+    } finally {
+      setTestando(false);
+      controladorRef.current = null;
+    }
+  }
+
+  function cancelarTeste() {
+    controladorRef.current?.abort();
+  }
 
   return (
     <ScrollView
       style={[styles.scrollView, { backgroundColor: theme.background }]}
-      contentInset={insets}
-      contentContainerStyle={[styles.contentContainer, contentPlatformStyle]}>
+      contentInset={{ top: insets.top }}
+      contentContainerStyle={[
+        styles.contentContainer,
+        Platform.select({
+          android: { paddingTop: insets.top, paddingBottom: insets.bottom },
+          web: { paddingTop: Spacing.six },
+        }),
+      ]}
+      keyboardShouldPersistTaps="handled">
       <ThemedView style={styles.container}>
-        <ThemedView style={styles.titleContainer}>
-          <ThemedText type="subtitle">Explore</ThemedText>
-          <ThemedText style={styles.centerText} themeColor="textSecondary">
-            This starter app includes example{'\n'}code to help you get started.
+        <ThemedView style={styles.titleBlock}>
+          <ThemedText type="subtitle">Configurações</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            Endereço do servidor da API (FastAPI) que faz o OCR e a resolução.
+          </ThemedText>
+        </ThemedView>
+
+        <ThemedView type="backgroundElement" style={styles.card}>
+          <ThemedText type="smallBold" themeColor="textSecondary">
+            URL base da API
+          </ThemedText>
+          <TextInput
+            value={rascunho}
+            onChangeText={alterarRascunho}
+            placeholder="http://10.0.2.2:8000"
+            placeholderTextColor={theme.textSecondary}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            style={[
+              styles.input,
+              { color: theme.text, backgroundColor: theme.backgroundSelected, borderColor: theme.border },
+            ]}
+          />
+          <ThemedText type="small" themeColor="textSecondary">
+            Num celular físico, use o IP da máquina que roda{' '}
+            <ThemedText type="code">uvicorn main:app</ThemedText> na rede local — não funciona
+            apontar para <ThemedText type="code">127.0.0.1</ThemedText>, que no celular significa
+            o próprio celular. No emulador Android, o IP do computador costuma ser{' '}
+            <ThemedText type="code">10.0.2.2</ThemedText>.
           </ThemedText>
 
-          <ExternalLink href="https://docs.expo.dev" asChild>
-            <Pressable style={({ pressed }) => pressed && styles.pressed}>
-              <ThemedView type="backgroundElement" style={styles.linkButton}>
-                <ThemedText type="link">Expo documentation</ThemedText>
-                <SymbolView
-                  tintColor={theme.text}
-                  name={{ ios: 'arrow.up.right.square', android: 'link', web: 'link' }}
-                  size={12}
-                />
-              </ThemedView>
-            </Pressable>
-          </ExternalLink>
+          <View style={styles.botoesRow}>
+            <PrimaryButton
+              texto={temAlteracoesPendentes ? 'Salvar e testar' : 'Testar conexão'}
+              onPress={temAlteracoesPendentes ? salvarEtestar : testarConexao}
+              carregando={testando}
+              desabilitado={testando}
+            />
+            {testando && (
+              <PrimaryButton texto="Cancelar" onPress={cancelarTeste} variante="contorno" />
+            )}
+          </View>
         </ThemedView>
 
-        <ThemedView style={styles.sectionsWrapper}>
-          <Collapsible title="File-based routing">
-            <ThemedText type="small">
-              This app has two screens: <ThemedText type="code">src/app/index.tsx</ThemedText> and{' '}
-              <ThemedText type="code">src/app/explore.tsx</ThemedText>
-            </ThemedText>
-            <ThemedText type="small">
-              The layout file in <ThemedText type="code">src/app/_layout.tsx</ThemedText> sets up
-              the tab navigator.
-            </ThemedText>
-            <ExternalLink href="https://docs.expo.dev/router/introduction">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
+        {testando && <LoadingBlock mensagem="Consultando /saude…" />}
+        {erro && <ErrorBanner mensagem={erro} />}
 
-          <Collapsible title="Android, iOS, and web support">
-            <ThemedView type="backgroundElement" style={styles.collapsibleContent}>
-              <ThemedText type="small">
-                You can open this project on Android, iOS, and the web. To open the web version,
-                press <ThemedText type="smallBold">w</ThemedText> in the terminal running this
-                project.
+        {saude && (
+          <ThemedView type="backgroundElement" style={styles.card}>
+            <View style={styles.statusHeader}>
+              <ThemedText type="smallBold" themeColor="textSecondary">
+                Status do servidor
               </ThemedText>
-              <Image
-                source={require('@/assets/images/tutorial-web.png')}
-                style={styles.imageTutorial}
-              />
-            </ThemedView>
-          </Collapsible>
+              <Badge texto={saude.ok ? 'Modelo carregado' : 'Modelo indisponível'} tom={saude.ok ? 'sucesso' : 'perigo'} />
+            </View>
+            <InfoLinha rotulo="Modelo" valor={saude.modelo} />
+            <InfoLinha rotulo="Dispositivo" valor={saude.dispositivo ?? '—'} />
+            <InfoLinha rotulo="Precisão (dtype)" valor={saude.dtype ?? '—'} />
+            <InfoLinha rotulo="Tokens de prompt" valor={saude.tokens_prompt?.toString() ?? '—'} />
+            <InfoLinha rotulo="Máx. tokens gerados" valor={saude.max_new_tokens.toString()} />
+          </ThemedView>
+        )}
 
-          <Collapsible title="Images">
-            <ThemedText type="small">
-              For static images, you can use the <ThemedText type="code">@2x</ThemedText> and{' '}
-              <ThemedText type="code">@3x</ThemedText> suffixes to provide files for different
-              screen densities.
+        <ThemedView
+          type="backgroundElement"
+          style={[styles.card, { paddingBottom: BottomTabInset + Spacing.four }]}>
+          <ThemedText type="smallBold" themeColor="textSecondary">
+            Sobre os modos
+          </ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="smallBold" themeColor="textSecondary">
+              Foto → resultado{' '}
             </ThemedText>
-            <Image source={require('@/assets/images/react-logo.png')} style={styles.imageReact} />
-            <ExternalLink href="https://reactnative.dev/docs/images">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
-
-          <Collapsible title="Light and dark mode components">
-            <ThemedText type="small">
-              This template has light and dark mode support. The{' '}
-              <ThemedText type="code">useColorScheme()</ThemedText> hook lets you inspect what the
-              user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
+            usa <ThemedText type="code">/ocr-e-resolver</ThemedText>.{'\n'}
+            <ThemedText type="smallBold" themeColor="textSecondary">
+              Revisar antes{' '}
             </ThemedText>
-            <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
-
-          <Collapsible title="Animations">
-            <ThemedText type="small">
-              This template includes an example of an animated component. The{' '}
-              <ThemedText type="code">src/components/ui/collapsible.tsx</ThemedText> component uses
-              the powerful <ThemedText type="code">react-native-reanimated</ThemedText> library to
-              animate opening this hint.
+            usa <ThemedText type="code">/ocr</ThemedText> e depois{' '}
+            <ThemedText type="code">/resolver</ThemedText>, para corrigir a transcrição antes de
+            resolver.{'\n'}
+            <ThemedText type="smallBold" themeColor="textSecondary">
+              Digitar LaTeX{' '}
             </ThemedText>
-          </Collapsible>
+            usa só <ThemedText type="code">/resolver</ThemedText>.
+          </ThemedText>
         </ThemedView>
-        {Platform.OS === 'web' && <WebBadge />}
       </ThemedView>
     </ScrollView>
+  );
+}
+
+function InfoLinha({ rotulo, valor }: { rotulo: string; valor: string }) {
+  return (
+    <View style={styles.infoLinha}>
+      <ThemedText type="small" themeColor="textSecondary">
+        {rotulo}
+      </ThemedText>
+      <ThemedText type="small" style={{ fontFamily: Fonts.mono }}>
+        {valor}
+      </ThemedText>
+    </View>
   );
 }
 
@@ -136,45 +186,36 @@ const styles = StyleSheet.create({
   container: {
     maxWidth: MaxContentWidth,
     flexGrow: 1,
-  },
-  titleContainer: {
-    gap: Spacing.three,
-    alignItems: 'center',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.six,
-  },
-  centerText: {
-    textAlign: 'center',
-  },
-  pressed: {
-    opacity: 0.7,
-  },
-  linkButton: {
-    flexDirection: 'row',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.two,
-    borderRadius: Spacing.five,
-    justifyContent: 'center',
-    gap: Spacing.one,
-    alignItems: 'center',
-  },
-  sectionsWrapper: {
-    gap: Spacing.five,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.three,
-  },
-  collapsibleContent: {
-    alignItems: 'center',
-  },
-  imageTutorial: {
     width: '100%',
-    aspectRatio: 296 / 171,
-    borderRadius: Spacing.three,
-    marginTop: Spacing.two,
+    gap: Spacing.four,
+    paddingHorizontal: Spacing.four,
   },
-  imageReact: {
-    width: 100,
-    height: 100,
-    alignSelf: 'center',
+  titleBlock: {
+    gap: Spacing.one,
+    paddingTop: Spacing.four,
+  },
+  card: {
+    borderRadius: Spacing.four,
+    padding: Spacing.three,
+    gap: Spacing.three,
+  },
+  input: {
+    borderRadius: Spacing.three,
+    borderWidth: 1,
+    padding: Spacing.three,
+    fontSize: 15,
+  },
+  botoesRow: {
+    flexDirection: 'row',
+    gap: Spacing.three,
+  },
+  statusHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  infoLinha: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
 });
